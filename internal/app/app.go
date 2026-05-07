@@ -141,21 +141,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "shift+up":
-			if m.activePanel == PanelTerminal {
+			// Move splitter UP: terminal grows, top panels shrink.
+			logoH := 0
+			if m.height >= 30 {
+				logoH = lipgloss.Height(krakenLogo)
+			}
+			maxTermH := m.height - logoH - 11 // leave 5 lines for top panels
+			if m.termHeight < maxTermH {
 				m.termHeight++
-			} else if m.termHeight > 3 {
-				m.termHeight--
 			}
 			m.applySize()
 			return m, nil
 
 		case "shift+down":
-			if m.activePanel == PanelTerminal {
-				if m.termHeight > 3 {
-					m.termHeight--
-				}
-			} else {
-				m.termHeight++
+			// Move splitter DOWN: terminal shrinks, top panels grow.
+			if m.termHeight > 3 {
+				m.termHeight--
 			}
 			m.applySize()
 			return m, nil
