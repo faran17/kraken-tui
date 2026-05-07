@@ -16,14 +16,6 @@ import (
 	"github.com/faran17/kraken-tui/pkg/styles"
 )
 
-var krakenLogo = styles.Logo.Render(strings.TrimPrefix(`
-    __ __                 __                
-   / //_/  ____   ____   / /_   ___   ____  
-  / ,<    / __ \ / __ \ / ,<   / _ \ / __ \ 
- / /| |  / /  / / /_/ // /| | /  __// / / / 
-/_/ |_| /_/    \__,_/ /_/ |_| \___//_/ /_/  
-`, "\n"))
-
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 // Panel indices for routing keyboard events and drawing active borders.
@@ -142,16 +134,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "shift+up", "ctrl+up", "alt+up":
 			// Move splitter UP: terminal grows, top panels shrink.
-			logoH := 0
-			if m.height >= 30 {
-				logoH = lipgloss.Height(krakenLogo) + 1
-			}
-			maxTermH := m.height - logoH - 11 // leave 5 lines for top panels
-			// If we are blocked by the logo, we can let it grow further (logo hides dynamically in calculateDimensions)
-			if m.termHeight >= maxTermH && logoH > 0 {
-				maxTermH = m.height - 11 // Max height without logo
-			}
-
+			maxTermH := m.height - 11 // leave 5 lines for top panels
 			if m.termHeight < maxTermH {
 				m.termHeight++
 			}
@@ -236,22 +219,8 @@ func (m Model) View() string {
 	header := m.renderHeader()
 	status := m.renderStatus(m.width)
 
-	// We'll show the ASCII logo at the top if there is enough vertical space
-	// and the user hasn't explicitly resized the terminal to consume that space.
-	logoStr := ""
-	logoH := 0
-	if m.height >= 30 {
-		logoH = lipgloss.Height(krakenLogo)
-	}
-	// Hide logo dynamically if terminal is expanded too much
-	if m.height-logoH-11 < m.termHeight {
-		logoStr = ""
-	} else if m.height >= 30 {
-		logoStr = krakenLogo + "\n"
-	}
-
 	// Join everything vertically.
-	return lipgloss.JoinVertical(lipgloss.Left, logoStr, header, mainBody, termPanel, status)
+	return lipgloss.JoinVertical(lipgloss.Left, header, mainBody, termPanel, status)
 }
 
 // ── Rendering helpers ─────────────────────────────────────────────────────────
@@ -386,16 +355,7 @@ func (m Model) calculateDimensions() ([3]int, int) {
 	statusH := 1
 	termH := m.termHeight + 2 // include borders
 
-	logoH := 0
-	if m.height >= 30 {
-		logoH = lipgloss.Height(krakenLogo) + 1 // +1 for the newline added in View()
-	}
-	// Dynamically hide logo if termHeight needs the space
-	if m.height-logoH-11 < m.termHeight {
-		logoH = 0
-	}
-
-	panelH := m.height - headerH - statusH - termH - logoH - 2
+	panelH := m.height - headerH - statusH - termH - 2
 	if panelH < 5 {
 		panelH = 5
 	}
