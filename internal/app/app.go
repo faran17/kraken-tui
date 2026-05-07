@@ -144,7 +144,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Move splitter UP: terminal grows, top panels shrink.
 			logoH := 0
 			if m.height >= 30 {
-				logoH = lipgloss.Height(krakenLogo)
+				logoH = lipgloss.Height(krakenLogo) + 1
 			}
 			maxTermH := m.height - logoH - 11 // leave 5 lines for top panels
 			// If we are blocked by the logo, we can let it grow further (logo hides dynamically in calculateDimensions)
@@ -388,7 +388,7 @@ func (m Model) calculateDimensions() ([3]int, int) {
 
 	logoH := 0
 	if m.height >= 30 {
-		logoH = lipgloss.Height(krakenLogo)
+		logoH = lipgloss.Height(krakenLogo) + 1 // +1 for the newline added in View()
 	}
 	// Dynamically hide logo if termHeight needs the space
 	if m.height-logoH-11 < m.termHeight {
