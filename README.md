@@ -69,6 +69,7 @@ go mod tidy && go build -o kraken . && ./kraken
 | Key | Action |
 |---|---|
 | `Enter` | Send message |
+| `Ctrl+K` | Change API Key |
 | `PgUp`/`PgDown` | Scroll chat history |
 | `Alt+N` | Start new session |
 | `Alt+←`/`Alt+→` | Switch between sessions |

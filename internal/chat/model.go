@@ -327,6 +327,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			if !m.streaming {
 				cmds = append(cmds, m.sendMessage())
 			}
+		case "ctrl+k":
+			// Disconnect the client to trigger the API key setup screen.
+			m.client = nil
+			m.apiKeyInput.SetValue(m.apiKey)
+			m.apiKeyInput.Focus()
+			m.err = nil
 		case "alt+n":
 			// Open a brand-new session.
 			m = m.newSession()
@@ -382,6 +388,9 @@ func (m Model) View() string {
 		errStr := ""
 		if m.err != nil {
 			errStr = "\n" + styles.StatusErr.Render("Error: "+m.err.Error())
+		}
+		if m.apiKey != "" && m.err == nil {
+			errStr = "\n" + styles.Dim.Render("(Press Enter to save your new key)")
 		}
 
 		box := lipgloss.JoinVertical(lipgloss.Center,
