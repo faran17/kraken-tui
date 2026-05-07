@@ -48,7 +48,6 @@ var (
 		MarginLeft(1)
 
 	Base = lipgloss.NewStyle().
-		Background(lipgloss.Color(ColorBg)).
 		Foreground(lipgloss.Color(ColorTextPrimary))
 
 	Dim = lipgloss.NewStyle().
@@ -80,7 +79,6 @@ func PanelInactive(width, height int) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Border(oceanBorder).
 		BorderForeground(lipgloss.Color(ColorOceanDark)).
-		Background(lipgloss.Color(ColorBgPanel)).
 		Foreground(lipgloss.Color(ColorTextPrimary)).
 		Width(width).
 		Height(height).
@@ -92,7 +90,6 @@ func PanelActive(width, height int) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Border(oceanBorder).
 		BorderForeground(lipgloss.Color(ColorKrakenOrange)).
-		Background(lipgloss.Color(ColorBgPanel)).
 		Foreground(lipgloss.Color(ColorTextPrimary)).
 		Width(width).
 		Height(height).
