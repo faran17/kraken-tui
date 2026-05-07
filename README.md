@@ -44,7 +44,7 @@ go mod tidy && go build -o kraken . && ./kraken
 |---|---|
 | `Tab` | Cycle to next panel |
 | `Shift+Tab` | Cycle to previous panel |
-| `Shift+Arrows` | Resize active panel horizontally/vertically |
+| `Shift/Alt/Ctrl + Arrows` | Resize active panel horizontally/vertically |
 | `Ctrl+C` / `Ctrl+Q` | Quit |
 
 ### 🗂 File Browser

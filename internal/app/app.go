@@ -140,20 +140,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applySize()
 			return m, nil
 
-		case "shift+up":
+		case "shift+up", "ctrl+up", "alt+up":
 			// Move splitter UP: terminal grows, top panels shrink.
 			logoH := 0
 			if m.height >= 30 {
 				logoH = lipgloss.Height(krakenLogo)
 			}
 			maxTermH := m.height - logoH - 11 // leave 5 lines for top panels
+			// If we are blocked by the logo, we can let it grow further (logo hides dynamically in calculateDimensions)
+			if m.termHeight >= maxTermH && logoH > 0 {
+				maxTermH = m.height - 11 // Max height without logo
+			}
+
 			if m.termHeight < maxTermH {
 				m.termHeight++
 			}
 			m.applySize()
 			return m, nil
 
-		case "shift+down":
+		case "shift+down", "ctrl+down", "alt+down":
 			// Move splitter DOWN: terminal shrinks, top panels grow.
 			if m.termHeight > 3 {
 				m.termHeight--
@@ -232,9 +237,16 @@ func (m Model) View() string {
 	status := m.renderStatus(m.width)
 
 	// We'll show the ASCII logo at the top if there is enough vertical space
-	// to avoid completely destroying the UI on extremely small screens.
+	// and the user hasn't explicitly resized the terminal to consume that space.
 	logoStr := ""
+	logoH := 0
 	if m.height >= 30 {
+		logoH = lipgloss.Height(krakenLogo)
+	}
+	// Hide logo dynamically if terminal is expanded too much
+	if m.height-logoH-11 < m.termHeight {
+		logoStr = ""
+	} else if m.height >= 30 {
 		logoStr = krakenLogo + "\n"
 	}
 
@@ -377,6 +389,10 @@ func (m Model) calculateDimensions() ([3]int, int) {
 	logoH := 0
 	if m.height >= 30 {
 		logoH = lipgloss.Height(krakenLogo)
+	}
+	// Dynamically hide logo if termHeight needs the space
+	if m.height-logoH-11 < m.termHeight {
+		logoH = 0
 	}
 
 	panelH := m.height - headerH - statusH - termH - logoH - 2
