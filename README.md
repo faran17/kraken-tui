@@ -1,5 +1,7 @@
 # 🐙 Kraken TUI
 
+![Kraken TUI Logo](./KrakenTUI.png)
+
 A feature-rich, keyboard-driven terminal user interface (TUI) built with **Go + Bubble Tea**, featuring three integrated panels:
 
 | Panel | Description |
