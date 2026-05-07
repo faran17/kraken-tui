@@ -15,6 +15,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -96,10 +97,11 @@ type Model struct {
 	cancelCtx context.CancelFunc
 
 	// UI components
-	viewport      viewport.Model // scrollable message history
-	input         textarea.Model // multi-line user input box
-	spinner       spinner.Model  // animated spinner shown while streaming
-	viewportReady bool           // true after the first WindowSizeMsg
+	viewport      viewport.Model  // scrollable message history
+	input         textarea.Model  // multi-line user input box
+	apiKeyInput   textinput.Model // single-line input for the API key
+	spinner       spinner.Model   // animated spinner shown while streaming
+	viewportReady bool            // true after the first WindowSizeMsg
 
 	// Feedback fields
 	status   string // informational text shown in the header
@@ -120,6 +122,17 @@ func New(apiKey string) (Model, error) {
 		return Model{}, fmt.Errorf("create data dir: %w", err)
 	}
 	dataPath := filepath.Join(dataDir, "chat_history.json")
+	configPath := filepath.Join(dataDir, "config.json")
+
+	// Try loading API key from local config if not provided
+	if apiKey == "" {
+		if data, err := os.ReadFile(configPath); err == nil {
+			var cfg map[string]string
+			if err := json.Unmarshal(data, &cfg); err == nil && cfg["api_key"] != "" {
+				apiKey = cfg["api_key"]
+			}
+		}
+	}
 
 	// Configure the multi-line text input where the user types messages.
 	ta := textarea.New()
@@ -128,7 +141,19 @@ func New(apiKey string) (Model, error) {
 	ta.SetWidth(60)
 	ta.SetHeight(3)
 	ta.ShowLineNumbers = false
-	ta.Focus()
+
+	// Input for API Key
+	aki := textinput.New()
+	aki.Placeholder = "Paste GEMINI_API_KEY here..."
+	aki.EchoMode = textinput.EchoPassword
+	aki.EchoCharacter = '•'
+	aki.Width = 50
+
+	if apiKey == "" {
+		aki.Focus()
+	} else {
+		ta.Focus()
+	}
 
 	// Spinner shown next to "Generating…" while waiting for the first token.
 	sp := spinner.New()
@@ -139,13 +164,14 @@ func New(apiKey string) (Model, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	m := Model{
-		apiKey:    apiKey,
-		dataPath:  dataPath,
-		input:     ta,
-		spinner:   sp,
-		ctx:       ctx,
-		cancelCtx: cancel,
-		tokenChan: make(chan string, 512), // buffered to avoid blocking the goroutine
+		apiKey:      apiKey,
+		dataPath:    dataPath,
+		input:       ta,
+		apiKeyInput: aki,
+		spinner:     sp,
+		ctx:         ctx,
+		cancelCtx:   cancel,
+		tokenChan:   make(chan string, 512), // buffered to avoid blocking the goroutine
 	}
 
 	// Load persisted history; if none, start with a blank session.
@@ -173,7 +199,7 @@ func New(apiKey string) (Model, error) {
 
 // Init returns the startup commands: textarea cursor blink and spinner tick.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, m.spinner.Tick)
+	return tea.Batch(textarea.Blink, textinput.Blink, m.spinner.Tick)
 }
 
 // SetSize is called by the root model every time the terminal is resized.
@@ -211,6 +237,40 @@ func (m Model) SetSize(w, h int) Model {
 // Update handles all Bubble Tea messages routed to the chat panel.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmds []tea.Cmd
+
+	// If the client isn't initialized, we only process API key input.
+	if m.client == nil {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			if msg.String() == "enter" {
+				key := strings.TrimSpace(m.apiKeyInput.Value())
+				if key != "" {
+					client, err := genai.NewClient(m.ctx, &genai.ClientConfig{
+						APIKey:  key,
+						Backend: genai.BackendGeminiAPI,
+					})
+					if err == nil {
+						m.client = client
+						m.apiKey = key
+						m.err = nil
+						// Save the key locally
+						cfgPath := filepath.Join(filepath.Dir(m.dataPath), "config.json")
+						data, _ := json.MarshalIndent(map[string]string{"api_key": key}, "", "  ")
+						os.WriteFile(cfgPath, data, 0o600)
+
+						m.apiKeyInput.Blur()
+						m.input.Focus()
+					} else {
+						m.err = err
+					}
+				}
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		m.apiKeyInput, cmd = m.apiKeyInput.Update(msg)
+		return m, cmd
+	}
 
 	switch msg := msg.(type) {
 
@@ -315,6 +375,32 @@ func (m Model) View() string {
 		return styles.Dim.Render("  Initialising…")
 	}
 
+	// ── Setup View (if no API Key) ────────────────────────────────────────────
+	if m.client == nil {
+		header := styles.ChatSystemMsg.Render("Welcome to Gemini 2.0 Flash!")
+		sub := styles.Dim.Render("An API key is required to start chatting.")
+		errStr := ""
+		if m.err != nil {
+			errStr = "\n" + styles.StatusErr.Render("Error: "+m.err.Error())
+		}
+
+		box := lipgloss.JoinVertical(lipgloss.Center,
+			header,
+			sub,
+			"",
+			m.apiKeyInput.View(),
+			errStr,
+		)
+
+		// Center the box vertically and horizontally
+		padTop := (m.height - lipgloss.Height(box)) / 2
+		if padTop < 0 {
+			padTop = 0
+		}
+
+		return strings.Repeat("\n", padTop) + lipgloss.PlaceHorizontal(m.width, lipgloss.Center, box)
+	}
+
 	// ── Session tab bar ───────────────────────────────────────────────────────
 	var tabs strings.Builder
 	for i, s := range m.sessions {
@@ -329,8 +415,6 @@ func (m Model) View() string {
 	// ── Status / error line ───────────────────────────────────────────────────
 	var statusLine string
 	switch {
-	case m.client == nil:
-		statusLine = styles.StatusErr.Render("⚠ GEMINI_API_KEY not set — set env var and restart")
 	case m.err != nil:
 		statusLine = styles.StatusErr.Render("Error: " + m.err.Error())
 	case m.streaming:

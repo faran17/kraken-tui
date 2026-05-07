@@ -51,6 +51,10 @@ type Model struct {
 	todo  todo.Model
 	term  terminal.Model
 
+	// Layout proportions
+	panelWidths [3]float64 // Width percentages for the three top panels
+	termHeight  int        // Fixed line height for the terminal panel
+
 	// Global UI elements
 	spinner spinner.Model // loading spinner used before first render
 	ready   bool          // becomes true after receiving the first WindowSizeMsg
@@ -86,6 +90,8 @@ func New(apiKey string) (Model, error) {
 		todo:        todoModel,
 		term:        termModel,
 		spinner:     s,
+		panelWidths: [3]float64{0.334, 0.333, 0.333},
+		termHeight:  12,
 	}, nil
 }
 
@@ -116,15 +122,42 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Global quit sequence
 			return m, tea.Quit
 
-		case "tab":
-			// Cycle active panel forwards: 0 -> 1 -> 2 -> 0
-			m.activePanel = (m.activePanel + 1) % panelCount
+		case "tab", "shift+tab":
+			if msg.String() == "tab" {
+				m.activePanel = (m.activePanel + 1) % panelCount
+			} else {
+				m.activePanel = (m.activePanel - 1 + panelCount) % panelCount
+			}
 			return m, nil
 
-		case "shift+tab":
-			// Cycle active panel backwards: 0 -> 2 -> 1 -> 0
-			// Adding panelCount before modulo prevents negative results in Go.
-			m.activePanel = (m.activePanel - 1 + panelCount) % panelCount
+		case "shift+left":
+			m.resizeHorizontal(-0.05)
+			m.applySize()
+			return m, nil
+
+		case "shift+right":
+			m.resizeHorizontal(0.05)
+			m.applySize()
+			return m, nil
+
+		case "shift+up":
+			if m.activePanel == PanelTerminal {
+				m.termHeight++
+			} else if m.termHeight > 3 {
+				m.termHeight--
+			}
+			m.applySize()
+			return m, nil
+
+		case "shift+down":
+			if m.activePanel == PanelTerminal {
+				if m.termHeight > 3 {
+					m.termHeight--
+				}
+			} else {
+				m.termHeight++
+			}
+			m.applySize()
 			return m, nil
 		}
 
@@ -133,15 +166,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ready = true
-
-		// Calculate available dimensions for the child panels
-		w, h := m.panelDimensions()
-
-		// Propagate resize downwards
-		m.files = m.files.SetSize(w, h)
-		m.chat = m.chat.SetSize(w, h)
-		m.todo = m.todo.SetSize(w, h)
-		m.term = m.term.SetSize(m.width, m.terminalHeight())
+		m.applySize()
 		return m, nil
 
 	// ── Spinner ticks ────────────────────────────────────────────────────────
@@ -188,18 +213,18 @@ func (m Model) View() string {
 		return "\n  " + m.spinner.View() + "  Loading Kraken…"
 	}
 
-	w, h := m.panelDimensions()
+	widths, h := m.calculateDimensions()
 
 	// Render each panel as a distinct block of text.
-	filesPanel := m.renderPanel(PanelFiles, "󰉋  Files", m.files.View(), w, h)
-	chatPanel := m.renderPanel(PanelChat, "  Gemini", m.chat.View(), w, h)
-	todoPanel := m.renderPanel(PanelTodo, "  Tasks", m.todo.View(), w, h)
+	filesPanel := m.renderPanel(PanelFiles, "󰉋  Files", m.files.View(), widths[0], h)
+	chatPanel := m.renderPanel(PanelChat, "  Gemini", m.chat.View(), widths[1], h)
+	todoPanel := m.renderPanel(PanelTodo, "  Tasks", m.todo.View(), widths[2], h)
 
 	// Join the three main panels horizontally side-by-side.
 	mainBody := lipgloss.JoinHorizontal(lipgloss.Top, filesPanel, chatPanel, todoPanel)
 
 	// Render the bottom terminal panel.
-	termPanel := m.renderPanel(PanelTerminal, "  Terminal", m.term.View(), m.width-2, m.terminalHeight())
+	termPanel := m.renderPanel(PanelTerminal, "  Terminal", m.term.View(), m.width-2, m.termHeight)
 
 	// Render the top and bottom bars.
 	header := m.renderHeader()
@@ -307,34 +332,66 @@ func (m Model) renderStatus(width int) string {
 	return styles.StatusBar.Width(width).Render(bar)
 }
 
-// terminalHeight calculates how tall the terminal panel should be (fixed 12 lines for now)
-func (m Model) terminalHeight() int {
-	return 12
+// ── Layout Engine ─────────────────────────────────────────────────────────────
+
+func (m *Model) resizeHorizontal(delta float64) {
+	if m.activePanel >= 3 {
+		return // Cannot horizontally resize terminal
+	}
+
+	target := m.activePanel
+	neighbor := m.activePanel + 1
+	if target == 2 {
+		neighbor = target - 1
+	}
+
+	// Apply constraint (min 10% width)
+	if m.panelWidths[target]+delta < 0.10 {
+		return
+	}
+	if m.panelWidths[neighbor]-delta < 0.10 {
+		return
+	}
+
+	m.panelWidths[target] += delta
+	m.panelWidths[neighbor] -= delta
 }
 
-// panelDimensions calculates the width and height available to each of the three
-// top panels, taking into account the header bar (1 line), status bar (1 line),
-// the terminal panel, and optionally the ASCII logo.
-func (m Model) panelDimensions() (int, int) {
+func (m *Model) applySize() {
+	if !m.ready {
+		return
+	}
+	widths, h := m.calculateDimensions()
+	m.files = m.files.SetSize(widths[0], h)
+	m.chat = m.chat.SetSize(widths[1], h)
+	m.todo = m.todo.SetSize(widths[2], h)
+	m.term = m.term.SetSize(m.width, m.termHeight)
+}
+
+func (m Model) calculateDimensions() ([3]int, int) {
 	headerH := 1
 	statusH := 1
-	termH := m.terminalHeight() + 2 // include borders
+	termH := m.termHeight + 2 // include borders
 
 	logoH := 0
 	if m.height >= 30 {
 		logoH = lipgloss.Height(krakenLogo)
 	}
 
-	// Divide the width evenly by 3, subtract 2 for border strokes
-	panelW := (m.width / 3) - 2
 	panelH := m.height - headerH - statusH - termH - logoH - 2
-
-	// Enforce minimum dimensions to prevent layout panics during extreme resizing
-	if panelW < 10 {
-		panelW = 10
-	}
 	if panelH < 5 {
 		panelH = 5
 	}
-	return panelW, panelH
+
+	var widths [3]int
+	totalW := m.width
+
+	for i := 0; i < 3; i++ {
+		w := int(float64(totalW)*m.panelWidths[i]) - 2 // -2 for borders
+		if w < 10 {
+			w = 10
+		}
+		widths[i] = w
+	}
+	return widths, panelH
 }
