@@ -1,5 +1,8 @@
 # 🐙 Kraken TUI
 
+> [!IMPORTANT]
+> **Kraken TUI v2 is now available!** This repository is for version 1. For the latest features including a setup menu, theme support, and more, please visit the [Kraken TUI v2](file:///Users/Faran17/Documents/AntiGravityFolder/Kraken_TUI_v2) repository.
+
 ![Kraken TUI Logo](./KrakenTUI.png)
 
 A feature-rich, keyboard-driven terminal user interface (TUI) built with **Go + Bubble Tea**, featuring three integrated panels:
